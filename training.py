@@ -97,15 +97,16 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
             start = i * opts.batch_size
             end = start + opts.batch_size if i < num_batches - 1 else len(features_train) - 1
             inputs = utils.to_var(torch.stack(input_tensors[start:end]), opts)
-            print(inputs)
+            #print(inputs)
             targets = utils.to_var(torch.stack(target_tensors[start:end]), opts)
-            
+            #print(targets)
             outputs = used_model(inputs)
-            #print(outputs)
-            #print(targets.squeeze())
-            #print(outputs.size())
+            if epoch >= 200 and epoch < 205:
+                print(outputs)
+                print(targets.squeeze())
             # targets.size().squeeze(1))
             loss = criterion(outputs, targets.squeeze(1))
+            #print(targets.squeeze(1))
             #print(loss)
             epoch_losses.append(loss.item())
             optimizer.zero_grad()
@@ -118,7 +119,9 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
         #print(epoch_losses)
         #print(list(used_model.parameters()))
         train_loss = np.mean(epoch_losses)
+        #print(train_loss)
         val_loss = evaluate(features_eval,target_eval,used_model, criterion, opts)
+        #print(val_loss)
         if val_loss < best_val_loss:
             checkpoint(used_model)
 
@@ -185,7 +188,7 @@ if __name__ == '__main__':
     mod = model.DryBeanModel()
     criterion = nn.CrossEntropyLoss()
     #print(list(mod.parameters()))
-    optimizer = optim.Adam(list(mod.parameters()), lr=opts.learning_rate)
+    optimizer = optim.Adam(mod.parameters(), lr=opts.learning_rate)
 
     if opts.cuda:
         mod.cuda()
