@@ -11,6 +11,6 @@ class DryBeanModel(nn.Module):
         self.soft = nn.Softmax(dim=1)
 
     def forward(self,inputs):
-        return self.soft(F.sigmoid(self.ln(inputs)))
+        return self.ln(inputs)
     
         
