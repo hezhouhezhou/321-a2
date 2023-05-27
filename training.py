@@ -125,6 +125,69 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
+def training_loop_cross_validation(num_blocks,features_train, target_train, used_model, criterion, optimizer, opts):
+    
+    
+    list_of_features = torch.split(features_train,num_blocks,dim=0)
+    list_of_targets = torch.split(target_train, num_blocks, dim=0)
+
+    best_val_loss = 1e6
+    train_losses = []
+    val_losses = []
+    loss_log = open(os.path.join('loss_log', 'loss_log.txt'), 'w')
+    f = 0
+    for epoch in range(opts.nepochs):
+        print("epoch: " + str(epoch))
+        
+        # cross validation
+        features_eval = list_of_features[f]
+        left_features = list_of_features[:f]
+        right_features = list_of_features[f+1:]
+        features_train = left_features + right_features
+
+        left_targets = list_of_targets[:f]
+        right_targets = list_of_targets[f+1:]
+        target_train = left_targets + right_targets
+        target_eval = list_of_targets[f]
+
+        f += 1
+        if f == num_blocks:
+            f = 0
+        optimizer.param_groups[0]['lr'] *= opts.lr_decay
+        input_tensors = [torch.Tensor(w) for w in features_train]
+        target_tensors = [torch.LongTensor([int(w)]) for w in target_train]
+        epoch_losses = []
+        num_batches = int(np.ceil(len(features_train) / float(opts.batch_size)))
+
+        for i in range(num_batches):  
+            start = i * opts.batch_size
+            end = start + opts.batch_size if i < num_batches - 1 else len(features_train) - 1
+            inputs = utils.to_var(torch.stack(input_tensors[start:end]), opts)
+            targets = utils.to_var(torch.stack(target_tensors[start:end]), opts)
+            outputs = used_model(inputs)
+            loss = criterion(outputs, targets.squeeze(1))
+            epoch_losses.append(loss.item())
+            optimizer.zero_grad()
+
+            # Compute gradients
+            loss.backward()
+
+            # Update the parameters of the model
+            optimizer.step()
+        train_loss = np.mean(epoch_losses)
+        #print(train_loss)
+        val_loss,rate = evaluate(features_eval,target_eval,used_model, criterion, opts)
+        #print(val_loss)
+        print(rate)
+        if val_loss < best_val_loss:
+            checkpoint(used_model)
+
+        loss_log.write('{} {} {} {}\n'.format(epoch, train_loss, val_loss, rate))
+        loss_log.flush()
+
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+
 def create_parser():
     """Creates a parser for command-line arguments.
     """
@@ -147,6 +210,8 @@ def create_parser():
                         help='Choose whether to use GPU.')
     parser.add_argument('--mps', action='store_true', default=False, 
                         help='choose whether to use mps')
+    parser.add_argument('--usecrossval', action='store_true', default=False, 
+                        help='determing whether to use cross validation')
 
     return parser
 
@@ -187,7 +252,13 @@ if __name__ == '__main__':
         mod.to("mps")
         print("Moved models to apple chip")
     
-    try:
-        training_loop(features_train,features_eval, target_train, target_eval, mod, criterion, optimizer, opts)
-    except KeyboardInterrupt:
-        print('Exiting early from training.')
+    if not opts.usecrossval:
+        try:
+            training_loop(features_train,features_eval, target_train, target_eval, mod, criterion, optimizer, opts)
+        except KeyboardInterrupt:
+            print('Exiting early from training.')
+    else:
+        try:
+            training_loop_cross_validation(10,features_train, target_train, mod, criterion, optimizer, opts)
+        except KeyboardInterrupt:
+            print('Exiting early from training.')
