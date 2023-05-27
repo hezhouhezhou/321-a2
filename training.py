@@ -76,7 +76,8 @@ def evaluate(features, target, used_model, criterion, opts):
         num_met += torch.sum(equal_elements).item()
         loss += criterion(outputs, targets.squeeze(1))  # cross entropy between the decoder distribution and GT
         losses.append(loss.item())
-
+    print(num_met)
+    print(num_tensors)
     rate = num_met / num_tensors
     mean_loss = np.mean(losses)
     return mean_loss,rate
@@ -88,14 +89,14 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
     train_losses = []
     val_losses = []
     loss_log = open(os.path.join('loss_log', 'loss_log.txt'), 'w')
-
+    #print(len(target_train))
+    print(target_train)
     for epoch in range(opts.nepochs):
         print("epoch: " + str(epoch))
         optimizer.param_groups[0]['lr'] *= opts.lr_decay
         input_tensors = [torch.Tensor(w) for w in features_train]
         target_tensors = [torch.LongTensor([int(w)]) for w in target_train]
         epoch_losses = []
-
         for i in range(num_batches):  
             start = i * opts.batch_size
             end = start + opts.batch_size if i < num_batches - 1 else len(features_train) - 1
@@ -125,17 +126,18 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-def training_loop_cross_validation(num_blocks,features_train, target_train, used_model, criterion, optimizer, opts):
+def training_loop_cross_validation(num_blocks,features, targets, used_model, criterion, optimizer, opts):
     
-    
-    list_of_features = torch.split(features_train,num_blocks,dim=0)
-    list_of_targets = torch.split(target_train, num_blocks, dim=0)
+    #sublist_size = (len(features_train) + num_blocks - 1) // num_blocks
 
+    list_of_features = np.array_split(features, num_blocks)
+    list_of_targets = np.array_split(targets, num_blocks)
     best_val_loss = 1e6
     train_losses = []
     val_losses = []
     loss_log = open(os.path.join('loss_log', 'loss_log.txt'), 'w')
     f = 0
+    #print(features_train)
     for epoch in range(opts.nepochs):
         print("epoch: " + str(epoch))
         
@@ -143,11 +145,11 @@ def training_loop_cross_validation(num_blocks,features_train, target_train, used
         features_eval = list_of_features[f]
         left_features = list_of_features[:f]
         right_features = list_of_features[f+1:]
-        features_train = left_features + right_features
-
+        features_train = [element for sublist in left_features for element in sublist] + [element for sublist in right_features for element in sublist]
+        #print(features_train)
         left_targets = list_of_targets[:f]
         right_targets = list_of_targets[f+1:]
-        target_train = left_targets + right_targets
+        target_train = [element for sublist in left_targets for element in sublist] + [element for sublist in right_targets for element in sublist]
         target_eval = list_of_targets[f]
 
         f += 1
@@ -155,6 +157,7 @@ def training_loop_cross_validation(num_blocks,features_train, target_train, used
             f = 0
         optimizer.param_groups[0]['lr'] *= opts.lr_decay
         input_tensors = [torch.Tensor(w) for w in features_train]
+        #print(target_train)
         target_tensors = [torch.LongTensor([int(w)]) for w in target_train]
         epoch_losses = []
         num_batches = int(np.ceil(len(features_train) / float(opts.batch_size)))
@@ -259,6 +262,6 @@ if __name__ == '__main__':
             print('Exiting early from training.')
     else:
         try:
-            training_loop_cross_validation(10,features_train, target_train, mod, criterion, optimizer, opts)
+            training_loop_cross_validation(10,features, targets, mod, criterion, optimizer, opts)
         except KeyboardInterrupt:
             print('Exiting early from training.')

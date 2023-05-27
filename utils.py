@@ -8,11 +8,11 @@ index_to_label = {label_to_index[key]:key for key in label_to_index}
 labeledindex_to_clusterindex = {}
 def read_data(path):
     df = pd.read_excel(path).values.tolist()
-    print(random.shuffle(df))
-    print(df)
+    random.shuffle(df)
+    #print(df)
     values = list([sublist[:-1] for sublist in df])
     tags = list([label_to_index[sublist[-1]] for sublist in df])
-    print(tags)
+    #print(tags)
     # print(data_array)
     # print(len(data_array))
     # print(values)
