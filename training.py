@@ -61,7 +61,7 @@ def evaluate(features, target, used_model, criterion, opts):
     
     num_tensors = len(input_tensors)
     num_batches = int(np.ceil(num_tensors / float(opts.batch_size)))
-
+    num_met = 0.0
     for i in range(num_batches):
         start = i * opts.batch_size
         #print("batch size "+ str(opts.batch_size))
@@ -70,13 +70,16 @@ def evaluate(features, target, used_model, criterion, opts):
         inputs = utils.to_var(torch.stack(input_tensors[start:end]), opts)
         targets = utils.to_var(torch.stack(target_tensors[start:end]), opts)
         outputs = used_model(inputs)
+        predicted = torch.argmax(outputs, dim=1)
+        equal_elements = torch.eq(predicted, targets.squeeze(1))
         loss = 0.0
-
+        num_met += torch.sum(equal_elements).item()
         loss += criterion(outputs, targets.squeeze(1))  # cross entropy between the decoder distribution and GT
         losses.append(loss.item())
-    
+
+    rate = num_met / num_tensors
     mean_loss = np.mean(losses)
-    return mean_loss
+    return mean_loss,rate
 
 def training_loop(features_train, features_eval, target_train, target_eval, used_model, criterion, optimizer, opts):
     
@@ -97,17 +100,9 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
             start = i * opts.batch_size
             end = start + opts.batch_size if i < num_batches - 1 else len(features_train) - 1
             inputs = utils.to_var(torch.stack(input_tensors[start:end]), opts)
-            #print(inputs)
             targets = utils.to_var(torch.stack(target_tensors[start:end]), opts)
-            #print(targets)
             outputs = used_model(inputs)
-            if epoch >= 200 and epoch < 205:
-                print(outputs)
-                print(targets.squeeze())
-            # targets.size().squeeze(1))
             loss = criterion(outputs, targets.squeeze(1))
-            #print(targets.squeeze(1))
-            #print(loss)
             epoch_losses.append(loss.item())
             optimizer.zero_grad()
 
@@ -116,16 +111,15 @@ def training_loop(features_train, features_eval, target_train, target_eval, used
 
             # Update the parameters of the model
             optimizer.step()
-        #print(epoch_losses)
-        #print(list(used_model.parameters()))
         train_loss = np.mean(epoch_losses)
         #print(train_loss)
-        val_loss = evaluate(features_eval,target_eval,used_model, criterion, opts)
+        val_loss,rate = evaluate(features_eval,target_eval,used_model, criterion, opts)
         #print(val_loss)
+        print(rate)
         if val_loss < best_val_loss:
             checkpoint(used_model)
 
-        loss_log.write('{} {} {}\n'.format(epoch, train_loss, val_loss))
+        loss_log.write('{} {} {} {}\n'.format(epoch, train_loss, val_loss, rate))
         loss_log.flush()
 
         train_losses.append(train_loss)
@@ -147,12 +141,8 @@ def create_parser():
                         help='Set the learning rate decay factor.')
     parser.add_argument('--hidden_size', type=int, default=10,
                         help='The size of the GRU hidden state.')
-    parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5,
-                        help='The proportion of the time teacher forcing is used.')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints',
                         help='Set the directry to store the best model checkpoints.')
-    parser.add_argument('--no_attention', action='store_true', default=False,
-                        help='Use the NoAttentionDecoder model.')
     parser.add_argument('--cuda', action='store_true', default=False,
                         help='Choose whether to use GPU.')
     parser.add_argument('--mps', action='store_true', default=False, 
@@ -196,6 +186,7 @@ if __name__ == '__main__':
     elif opts.mps:
         mod.to("mps")
         print("Moved models to apple chip")
+    
     try:
         training_loop(features_train,features_eval, target_train, target_eval, mod, criterion, optimizer, opts)
     except KeyboardInterrupt:
